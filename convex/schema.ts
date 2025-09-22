@@ -18,7 +18,7 @@ export default defineSchema({
     status: v.string(), // pending, processing, error
 
     // Fields for extracted data
-    merchanctName: v.optional(v.string()),
+    merchantName: v.optional(v.string()),
     merchantAddress: v.optional(v.string()),
     merchantContact: v.optional(v.string()),
     transactionDate: v.optional(v.string()),

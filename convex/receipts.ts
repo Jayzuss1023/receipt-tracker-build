@@ -28,7 +28,7 @@ export const storeReceipt = mutation({
       mimeType: args.mimeType,
       status: "pending",
       // Initialize extracted data fields as null
-      merchanctName: undefined,
+      merchantName: undefined,
       merchantAddress: undefined,
       merchantContact: undefined,
       transactionDate: undefined,
@@ -82,5 +82,119 @@ export const getReceiptById = query({
 
 // Generate a URL to download a receipt file
 export const getRceiptDownloadUrl = query({
-  args: { fileId: v.id("storage") },
+  args: { fileId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.fileId);
+  },
+});
+
+// Update the status of a receipt
+export const updateReceiptStatus = mutation({
+  args: {
+    id: v.id("receipts"),
+    status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Verify the user access to this receipt
+    const receipt = await ctx.db.get(args.id);
+    if (!receipt) {
+      throw new Error("Receipt not found!");
+    }
+
+    // Verify user has access to this receipt
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const userId = identity.subject;
+    if (receipt.userId !== userId) {
+      throw new Error("Not authorized the access this receipt!");
+    }
+
+    await ctx.db.patch(args.id, {
+      status: args.status,
+    });
+    return true;
+  },
+});
+
+// Delete a receipt and its file
+export const deleteReceipt = mutation({
+  args: {
+    id: v.id("receipts"),
+  },
+  handler: async (ctx, args) => {
+    // Verify the user access to this receipt
+    const receipt = await ctx.db.get(args.id);
+    if (!receipt) {
+      throw new Error("Receipt not found!");
+    }
+
+    // Verify user has access to this receipt
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const userId = identity.subject;
+    if (receipt.userId !== userId) {
+      throw new Error("Not authorized the access this receipt!");
+    }
+
+    // Delete file from storage
+    await ctx.storage.delete(receipt.fileId);
+
+    // Delete the receipt record
+    await ctx.db.delete(args.id);
+
+    return true;
+  },
+});
+
+// Update a receipt with extracted data
+export const updateReceiptWithExtractedData = mutation({
+  args: {
+    id: v.id("receipts"),
+    fileDisplayName: v.string(),
+    merchantName: v.string(),
+    merchantAddress: v.string(),
+    merchantContact: v.string(),
+    transactionDate: v.string(),
+    transactionAmount: v.string(),
+    currency: v.string(),
+    receiptSummary: v.string(),
+    items: v.array(
+      v.object({
+        name: v.string(),
+        quantity: v.number(),
+        unitPrice: v.number(),
+        totalPrice: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const receipt = await ctx.db.get(args.id);
+    if (!receipt) {
+      throw new Error("Receipt not found!");
+    }
+
+    // Update the receipt with the extracted data
+    await ctx.db.patch(args.id, {
+      fileDisplayName: args.fileDisplayName,
+      merchantName: args.merchantName,
+      merchantAddress: args.merchantAddress,
+      merchantContact: args.merchantContact,
+      transactionDate: args.transactionDate,
+      transactionAmount: args.transactionAmount,
+      currency: args.currency,
+      receiptSummary: args.receiptSummary,
+      items: args.items,
+      status: "processed",
+    });
+
+    return {
+      userId: receipt.userId,
+    };
+  },
 });

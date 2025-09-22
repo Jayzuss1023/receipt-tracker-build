@@ -1,6 +1,9 @@
 "use server";
 
+import { api } from "@/convex/_generated/api";
+import convex from "@/lib/convexClient";
 import { currentUser } from "@clerk/nextjs/server";
+import { getFileDownloadUrl } from "./getFileDownloadUrl";
 
 // Server actions to upload a PDF file to Convex storage
 
@@ -24,6 +27,51 @@ export async function uploadPDF(formData: FormData) {
     ) {
       return { success: false, error: "Only pdf files are allowed" };
     }
+
+    // Get upload URL from Convex
+    const uploadUrl = await convex.mutation(
+      api.receipts.generatedUploadUrl,
+      {},
+    );
+
+    // Convert file to arrayBuffer to fetch API
+    const arrayBuffer = await file.arrayBuffer();
+
+    // Upload file to Convex storage
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type,
+      },
+      body: new Uint8Array(arrayBuffer),
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Failed to upload file: ${uploadResponse.statusText}`);
+    }
+
+    // Get storage Id from response
+    const { storageId } = await uploadResponse.json();
+
+    // Add receipt to the database
+    const receiptId = await convex.mutation(api.receipts.storeReceipt, {
+      userId: user.id,
+      fileId: storageId,
+      fileName: file.name,
+      size: file.size,
+      mimeType: file.type,
+    });
+
+    // Generate the file URL
+    const fileUrl = await getFileDownloadUrl(storageId);
+
+    // TODO: Trigger inngest agent flow
+    // ...
+
+    return {
+      success: true,
+      fileName: file.name,
+    };
   } catch (error) {
     console.error("Server action upload error: ", error);
     return {
